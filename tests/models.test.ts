@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { isValidGrokModel, isValidMuseModel, isValidOpenCodeModel } from '../src/server/agents.js';
+import { configuredProvider, isValidGrokModel, isValidMuseModel, isValidOpenCodeModel, validateWorkerModel } from '../src/server/agents.js';
 import { createGrokModelCatalogue, createOpenCodeModelCatalogue, fetchGrokModels, fetchOpenCodeModels, type ModelCommandRunner } from '../src/server/models.js';
 
 test('OpenCode model ids require provider/model and reject whitespace or control characters', () => {
@@ -10,6 +10,19 @@ test('OpenCode model ids require provider/model and reject whitespace or control
   assert.equal(isValidOpenCodeModel('openai/gpt 5'), false);
   assert.equal(isValidOpenCodeModel('openai/gpt\n5'), false);
   assert.equal(isValidOpenCodeModel(`openai/${'x'.repeat(256)}`), false);
+});
+
+test('Configured provider recognizes Gemini and OpenRouter aliases', () => {
+  assert.equal(configuredProvider('gemini'), 'gemini');
+  assert.equal(configuredProvider('openrouter'), 'openrouter');
+  assert.equal(configuredProvider('claude-code'), 'claude');
+});
+
+test('Gemini and OpenRouter workers accept valid model ids', () => {
+  assert.equal(validateWorkerModel('agent', 'gemini', 'google/gemini-2.5-pro'), undefined);
+  assert.equal(validateWorkerModel('agent', 'openrouter', 'openrouter/google/gemini-2.5-flash'), undefined);
+  assert.match(validateWorkerModel('agent', 'gemini', 'gemini-2.5-pro') ?? '', /Invalid/);
+  assert.match(validateWorkerModel('agent', 'openrouter', 'bad\\model') ?? '', /Invalid/);
 });
 
 test('OpenCode catalogue invokes only the configured executable with bounded execFile options', async () => {

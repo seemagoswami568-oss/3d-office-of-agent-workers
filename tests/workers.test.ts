@@ -1,3 +1,32 @@
+test('OpenRouter workers launch through OpenCode with their provider model and hooks', async (t) => {
+  const f = fixture();
+  isolateProviderEnvironment(f, t);
+  const previousExit = process.env.FAKE_AGENT_EXIT_MS;
+  const previousLog = process.env.FAKE_AGENT_LOG;
+  process.env.FAKE_AGENT_EXIT_MS = '900';
+  process.env.FAKE_AGENT_LOG = f.log;
+  t.after(() => {
+    if (previousExit === undefined) delete process.env.FAKE_AGENT_EXIT_MS;
+    else process.env.FAKE_AGENT_EXIT_MS = previousExit;
+    if (previousLog === undefined) delete process.env.FAKE_AGENT_LOG;
+    else process.env.FAKE_AGENT_LOG = previousLog;
+    f.close();
+  });
+
+  const workers = manager(f, f.claude, []);
+  t.after(() => workers.shutdown());
+  const worker = workers.spawn('desk-1', 'test', 'OpenRouter prompt', false, 'agent', 'openrouter', 'openrouter/google/gemini-2.5-flash');
+  assert.equal(typeof worker, 'object');
+  if (typeof worker === 'string') return;
+  const invocation = await waitFor(() => f.read(), (records) => records.some((record) => record.kind === 'opencode'));
+  const openCode = invocation.find((record) => record.kind === 'opencode')!;
+  assert.deepEqual(openCode.args, ['--model', 'openrouter/google/gemini-2.5-flash', '--prompt', 'OpenRouter prompt']);
+  assert.ok(openCode.env.hookToken);
+  assert.ok(openCode.env.opencodeConfig?.includes('agent-office-opencode'));
+  assert.equal(workers.handleOpenCodeHook(worker.id, openCode.env.hookToken!, { type: 'session', sessionId: 'openrouter-session', status: 'starting' }), true);
+  await workers.kill(worker.id);
+});
+
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { accessSync, appendFileSync, chmodSync, constants, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';

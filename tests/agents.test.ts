@@ -51,7 +51,7 @@ test('model validation follows the provider', () => {
   assert.equal(validateWorkerModel('agent', 'opencode', 'vendor/model'), undefined);
   assert.match(validateWorkerModel('agent', 'opencode', 'gpt-5') ?? '', /OpenCode/);
   // Custom still takes none.
-  assert.match(validateWorkerModel('agent', 'custom', 'anything') ?? '', /Claude Code, OpenCode, Grok, Muse or DeepSeek Harness/);
+  assert.match(validateWorkerModel('agent', 'custom', 'anything') ?? '', /Models can only be selected/);
 });
 
 test('reasoning effort joins Claude for DeepSeek Harness', () => {

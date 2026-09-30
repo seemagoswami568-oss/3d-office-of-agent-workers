@@ -434,7 +434,7 @@ export class WorkerManager {
       id,
       kind,
       provider: selectedProvider,
-      model: selectedProvider === 'opencode' || selectedProvider === 'claude' || selectedProvider === 'grok' || selectedProvider === 'muse' || selectedProvider === 'dsh' ? model : undefined,
+      model: selectedProvider === 'opencode' || selectedProvider === 'claude' || selectedProvider === 'grok' || selectedProvider === 'muse' || selectedProvider === 'dsh' || selectedProvider === 'gemini' || selectedProvider === 'openrouter' ? model : undefined,
       effort: selectedProvider === 'claude' || selectedProvider === 'grok' || selectedProvider === 'muse' || selectedProvider === 'dsh' ? effort : undefined,
       deskId,
       name: kind === 'shell' ? `${name} 🐚` : name,
@@ -1399,7 +1399,7 @@ export class WorkerManager {
   /** OpenCode plugin callback. The plugin has already filtered child sessions before this bridge. */
   handleOpenCodeHook(workerId: string, token: string, payload: unknown): boolean {
     const w = this.workers.get(workerId);
-    if (!w || !w.pty || w.info.kind !== 'agent' || w.info.provider !== 'opencode' || !safeEq(token, w.hookToken)) return false;
+    if (!w || !w.pty || w.info.kind !== 'agent' || !['opencode', 'gemini', 'openrouter'].includes(w.info.provider ?? '') || !safeEq(token, w.hookToken)) return false;
     if (payload && typeof payload === 'object' && 'type' in payload && payload.type === 'usage') {
       const report = payload as { sessionId?: unknown; usage?: unknown };
       const usage = reportedUsage(report.usage);
@@ -1572,7 +1572,7 @@ export class WorkerManager {
     const isShell = info.kind === 'shell';
     const provider = info.provider;
     const isClaude = !isShell && provider === 'claude';
-    const isOpenCode = !isShell && provider === 'opencode';
+    const isOpenCode = !isShell && (provider === 'opencode' || provider === 'gemini' || provider === 'openrouter');
     const isCodex = !isShell && provider === 'codex';
     const isGrok = !isShell && provider === 'grok';
     const isMuse = !isShell && provider === 'muse';
@@ -1580,7 +1580,8 @@ export class WorkerManager {
     const configured = !isShell && provider === this.defaultProvider;
     const station = DESK_BY_ID.get(info.deskId)?.station;
     const command = this.command(info);
-    const commandPath = isShell ? undefined : configured ? this.agentPath : resolveCommand(command);
+    const usesConfiguredBinary = configured && provider !== 'gemini' && provider !== 'openrouter';
+    const commandPath = isShell ? undefined : usesConfiguredBinary ? this.agentPath : resolveCommand(command);
     let args = isShell ? (WIN && !process.env.SHELL ? [] : ['-l']) : configured ? [...this.agentArgs] : [];
     if (isClaude) {
       args.unshift('--settings', this.settingsPath);
@@ -1950,6 +1951,7 @@ export class WorkerManager {
   /** What a worker's terminal runs: the shell, the configured agent command, or another provider's CLI. */
   private command(info: WorkerInfo): string {
     if (info.kind === 'shell') return defaultShell();
+    if (info.provider === 'gemini' || info.provider === 'openrouter') return this.defaultProvider === 'opencode' ? this.agentCmd : 'opencode';
     return info.provider === this.defaultProvider ? this.agentCmd : info.provider ?? this.agentCmd;
   }
 
@@ -2194,7 +2196,7 @@ process.stdin.on('end', () => {
       meeting: info.meeting,
       workedMs: workedMs(info),
       tracker: info.kind === 'agent' ? tracker : undefined,
-      usage: info.provider === 'opencode' || info.provider === 'codex' || info.provider === 'dsh' ? info.usage : undefined,
+      usage: info.provider === 'opencode' || info.provider === 'gemini' || info.provider === 'openrouter' || info.provider === 'codex' || info.provider === 'dsh' ? info.usage : undefined,
       codexTranscript: info.provider === 'codex' ? codexTranscript : undefined,
       // A terminal still running in the host, to pick back up after a restart. Its hooks keep the token.
       hookToken,
@@ -2218,7 +2220,7 @@ process.stdin.on('end', () => {
         const tracker = restoreTracker(s.tracker);
         const provider = s.kind === 'shell'
           ? undefined
-          : s.provider === 'claude' || s.provider === 'opencode' || s.provider === 'codex' || s.provider === 'grok' || s.provider === 'muse' || s.provider === 'dsh' || s.provider === 'custom'
+          : s.provider === 'claude' || s.provider === 'opencode' || s.provider === 'codex' || s.provider === 'grok' || s.provider === 'muse' || s.provider === 'dsh' || s.provider === 'gemini' || s.provider === 'openrouter' || s.provider === 'custom'
             ? s.provider
             : tracker.transcript
               ? 'claude'
@@ -2227,7 +2229,7 @@ process.stdin.on('end', () => {
           id: s.id,
           kind: s.kind === 'shell' ? 'shell' : 'agent',
           provider,
-          model: provider === 'opencode' && isValidOpenCodeModel(s.model) ? s.model : provider === 'claude' && isClaudeModel(s.model) ? s.model : provider === 'grok' && isValidGrokModel(s.model) ? s.model : provider === 'muse' && isValidMuseModel(s.model) ? s.model : provider === 'dsh' && isValidDshModel(s.model) ? s.model : undefined,
+          model: (provider === 'opencode' || provider === 'gemini' || provider === 'openrouter') && isValidOpenCodeModel(s.model) ? s.model : provider === 'claude' && isClaudeModel(s.model) ? s.model : provider === 'grok' && isValidGrokModel(s.model) ? s.model : provider === 'muse' && isValidMuseModel(s.model) ? s.model : provider === 'dsh' && isValidDshModel(s.model) ? s.model : undefined,
           effort: (provider === 'claude' || provider === 'grok' || provider === 'muse' || provider === 'dsh') && isAgentEffort(s.effort) ? s.effort : undefined,
           deskId: s.deskId,
           name: s.name ?? 'Worker',
@@ -2244,7 +2246,7 @@ process.stdin.on('end', () => {
           activity: s.activity,
           task: validTask(s.task),
           pr: s.pr && typeof s.pr.number === 'number' && typeof s.pr.url === 'string' ? { number: s.pr.number, url: s.pr.url } : undefined,
-          usage: provider === 'opencode' || provider === 'codex' || provider === 'dsh' ? reportedUsage(s.usage) : (provider === 'claude' || provider === 'custom') && tracker.transcript ? trackerUsage(tracker) : undefined,
+          usage: provider === 'opencode' || provider === 'gemini' || provider === 'openrouter' || provider === 'codex' || provider === 'dsh' ? reportedUsage(s.usage) : (provider === 'claude' || provider === 'custom') && tracker.transcript ? trackerUsage(tracker) : undefined,
           cols: 100,
           rows: 30,
           viewers: [],
