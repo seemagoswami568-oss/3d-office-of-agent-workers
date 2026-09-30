@@ -10,6 +10,8 @@ export const PROVIDER_LABEL: Record<AgentProvider, string> = {
   grok: 'Grok',
   muse: 'Muse Code',
   dsh: 'DeepSeek Harness',
+  gemini: 'Gemini',
+  openrouter: 'OpenRouter',
   custom: 'Custom',
 };
 
@@ -41,7 +43,7 @@ export function modelBadge(provider: AgentProvider | undefined, model: string | 
 
 /** Providers the server says this project can start. */
 export function supportedProviders(project: ProjectInfo | null): AgentProvider[] {
-  const values = project?.agentProviders?.filter((p): p is AgentProvider => p === 'claude' || p === 'opencode' || p === 'codex' || p === 'grok' || p === 'muse' || p === 'dsh' || p === 'custom') ?? [];
+  const values = project?.agentProviders?.filter((p): p is AgentProvider => p === 'claude' || p === 'opencode' || p === 'codex' || p === 'grok' || p === 'muse' || p === 'dsh' || p === 'gemini' || p === 'openrouter' || p === 'custom') ?? [];
   if (values.length) return [...new Set(values)];
   return project?.defaultProvider && PROVIDER_LABEL[project.defaultProvider] ? [project.defaultProvider] : ['claude'];
 }
@@ -61,7 +63,7 @@ export function providerLabel(provider: AgentProvider | undefined, project: Proj
 
 export function providerUsageTracked(provider: AgentProvider | undefined, project: ProjectInfo | null, usage?: Usage): boolean {
   const selected = resolvedProvider(provider, project);
-  return selected === 'claude' || ((selected === 'opencode' || selected === 'codex' || selected === 'grok' || selected === 'muse' || selected === 'dsh' || selected === 'custom') && usage !== undefined);
+  return selected === 'claude' || ((selected === 'opencode' || selected === 'gemini' || selected === 'openrouter' || selected === 'codex' || selected === 'grok' || selected === 'muse' || selected === 'dsh' || selected === 'custom') && usage !== undefined);
 }
 
 export type ProviderUsageState = 'tracked' | 'waiting' | 'untracked';
@@ -70,7 +72,7 @@ export type ProviderUsageState = 'tracked' | 'waiting' | 'untracked';
 export function providerUsageState(provider: AgentProvider | undefined, project: ProjectInfo | null, usage?: Usage): ProviderUsageState {
   const selected = resolvedProvider(provider, project);
   if (selected === 'claude') return usage ? 'tracked' : 'waiting';
-  if (selected === 'opencode') return usage ? 'tracked' : 'waiting';
+  if (selected === 'opencode' || selected === 'gemini' || selected === 'openrouter') return usage ? 'tracked' : 'waiting';
   if (selected === 'codex') return usage ? 'tracked' : 'waiting';
   if (selected === 'grok') return usage ? 'tracked' : 'untracked';
   if (selected === 'muse') return usage ? 'tracked' : 'untracked';
@@ -85,7 +87,7 @@ export function providerUsageState(provider: AgentProvider | undefined, project:
  */
 export function providerWaitingLabel(provider: AgentProvider | undefined, project: ProjectInfo | null): string {
   const selected = resolvedProvider(provider, project);
-  if (selected === 'opencode') return 'waiting for metrics';
+  if (selected === 'opencode' || selected === 'gemini' || selected === 'openrouter') return 'waiting for metrics';
   if (selected === 'codex' || selected === 'dsh') return 'waiting for first report';
   return '';
 }
@@ -96,6 +98,7 @@ export function providerUsageNote(provider: AgentProvider): string {
   if (provider === 'grok') return 'Grok spend is not metered by the office; token totals stay in the worker terminal.';
   if (provider === 'muse') return 'Muse spend is not metered by the office; token totals stay in the worker terminal.';
   if (provider === 'dsh') return 'DeepSeek Harness reports context usage over ACP after its first turn; cost may be unavailable.';
+  if (provider === 'gemini' || provider === 'openrouter') return 'Runs through OpenCode; configure the provider API key in OpenCode. Usage is reported when OpenCode provides it.';
   if (provider === 'custom') return 'Usage is untracked unless compatible Claude Code hooks report it.';
   return 'OpenCode reports model/provider estimates; they are not billing, and arrive after the first report.';
 }
@@ -223,7 +226,7 @@ export function agentFields(project: ProjectInfo | null, id: string, initial: Ag
   }) as HTMLInputElement;
   const modelHint = h('small.provider-model-hint', {}, 'Optional provider/model override; suggestions load when OpenCode is selected.');
   const modelListEl = h('datalist', { id: `${id}-models` });
-  const modelChoice = h('div.provider-model', {}, h('label', { for: `${id}-model` }, 'OpenCode model'), modelInput, modelListEl, modelHint);
+  const modelChoice = h('div.provider-model', {}, h('label', { for: `${id}-model` }, 'Model'), modelInput, modelListEl, modelHint);
 
   const claudeModelSelect = h('select', { id: `${id}-claude-model`, 'aria-label': 'Claude model' }) as HTMLSelectElement;
   claudeModelSelect.append(h('option', { value: '' }, 'Default (--agent-args)'));
@@ -327,7 +330,7 @@ export function agentFields(project: ProjectInfo | null, id: string, initial: Ag
         });
       return;
     }
-    if (select.value !== 'opencode' || !element.isConnected || element.closest('.hidden')) return;
+    if (!['opencode', 'gemini', 'openrouter'].includes(select.value) || !element.isConnected || element.closest('.hidden')) return;
     modelHint.textContent = modelList ? 'Optional provider/model override; choose a suggestion or enter one manually.' : 'Loading OpenCode models… You can enter a provider/model manually.';
     void fetchOpenCodeModels()
       .then((models) => {
@@ -339,10 +342,11 @@ export function agentFields(project: ProjectInfo | null, id: string, initial: Ag
       });
   };
   const setModelVisibility = (provider: AgentProvider) => {
-    const openCode = provider === 'opencode';
+    const genericModel = provider === 'opencode' || provider === 'gemini' || provider === 'openrouter';
     note.textContent = providerUsageNote(provider);
-    modelChoice.classList.toggle('hidden', !openCode);
-    modelInput.disabled = !openCode;
+    modelChoice.classList.toggle('hidden', !genericModel);
+    modelInput.disabled = !genericModel;
+    modelInput.placeholder = 'Default (OpenCode settings)';
     claudeChoice.classList.toggle('hidden', provider !== 'claude');
     grokChoice.classList.toggle('hidden', provider !== 'grok');
     museChoice.classList.toggle('hidden', provider !== 'muse');
@@ -363,7 +367,7 @@ export function agentFields(project: ProjectInfo | null, id: string, initial: Ag
     museEffortSelect.value = muse && c.effort ? c.effort : '';
     dshModelInput.value = dsh && c.model ? c.model : '';
     dshEffortSelect.value = dsh && c.effort ? c.effort : '';
-    modelInput.value = select.value === 'opencode' && c.model ? c.model : '';
+    modelInput.value = (select.value === 'opencode' || select.value === 'gemini' || select.value === 'openrouter') && c.model ? c.model : '';
     modelInput.setCustomValidity('');
     museModelInput.setCustomValidity('');
     dshModelInput.setCustomValidity('');
@@ -393,6 +397,10 @@ export function agentFields(project: ProjectInfo | null, id: string, initial: Ag
     if (select.value === 'dsh') {
       const v = dshModelInput.value;
       return validDshModel(v) ? v : undefined;
+    }
+    if (select.value === 'gemini' || select.value === 'openrouter') {
+      const v = modelInput.value;
+      return validModel(v) ? v : undefined;
     }
     if (select.value !== 'opencode') return undefined;
     const v = modelInput.value;
@@ -426,14 +434,18 @@ export function agentFields(project: ProjectInfo | null, id: string, initial: Ag
         if (!okay) dshModelInput.reportValidity();
         return okay;
       }
-      if (select.value !== 'opencode' || !modelInput.value) {
-        modelInput.setCustomValidity('');
-        return true;
+      if (select.value === 'gemini' || select.value === 'openrouter' || select.value === 'opencode') {
+        if (!modelInput.value) {
+          modelInput.setCustomValidity('');
+          return true;
+        }
+        const okay = validModel(modelInput.value);
+        modelInput.setCustomValidity(okay ? '' : 'Use a provider/model id without whitespace or control characters (up to 256 characters).');
+        if (!okay) modelInput.reportValidity();
+        return okay;
       }
-      const okay = validModel(modelInput.value);
-      modelInput.setCustomValidity(okay ? '' : 'Use provider/model format without whitespace or control characters (up to 256 characters).');
-      if (!okay) modelInput.reportValidity();
-      return okay;
+      modelInput.setCustomValidity('');
+      return true;
     },
   };
 }
