@@ -99,8 +99,8 @@ export class TaskQueue {
     const task: QueueTask = {
       id: randomBytes(6).toString('hex'),
       provider,
-      model: provider === 'opencode' || provider === 'claude' || provider === 'grok' || provider === 'muse' || provider === 'dsh' ? model : undefined,
-      effort: provider === 'claude' || provider === 'grok' || provider === 'muse' || provider === 'dsh' ? effort : undefined,
+      model: provider === 'opencode' || provider === 'claude' || provider === 'grok' || provider === 'muse' || provider === 'dsh' || provider === 'gemini' || provider === 'openrouter' || provider === 'api' || provider === 'antigravity' ? model : undefined,
+      effort: provider === 'claude' || provider === 'grok' || provider === 'muse' || provider === 'dsh' || provider === 'gemini' || provider === 'openrouter' || provider === 'api' || provider === 'antigravity' ? effort : undefined,
       issue,
       title: (title?.trim() || firstLine(clean)).slice(0, 120),
       prompt: clean,

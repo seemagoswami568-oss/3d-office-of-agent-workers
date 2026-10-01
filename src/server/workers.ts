@@ -26,7 +26,7 @@ import { codexHookArgs, normalizeCodexHook, writeCodexHook } from './codex.js';
 import { normalizeGrokHook, withoutGrokLaunchArgs, writeGrokHome } from './grok.js';
 import { normalizeMuseHook, withoutMuseLaunchArgs, writeMuseHome } from './muse.js';
 import { reportedUsage } from './reported-usage.js';
-import { configuredProvider, isValidDshModel, isValidGrokModel, isValidMuseModel, isValidOpenCodeModel, validateWorkerEffort, validateWorkerModel } from './agents.js';
+import { configuredProvider, isValidCustomApiModel, isValidDshModel, isValidGrokModel, isValidMuseModel, isValidOpenCodeModel, validateWorkerEffort, validateWorkerModel } from './agents.js';
 import { mergeOpenCodeConfigContent, openCodePluginSpecifier, writeOpenCodePlugin, type OpenCodeStatusEvent } from './opencode.js';
 import { MCP_READ_ONLY, codexMcpArgs, openCodeMcp, writeClaudeMcpConfig } from './office-workers.js';
 import { ScrollbackStore, searchTerminal, terminalTail } from './history.js';
@@ -434,8 +434,8 @@ export class WorkerManager {
       id,
       kind,
       provider: selectedProvider,
-      model: selectedProvider === 'opencode' || selectedProvider === 'claude' || selectedProvider === 'grok' || selectedProvider === 'muse' || selectedProvider === 'dsh' ? model : undefined,
-      effort: selectedProvider === 'claude' || selectedProvider === 'grok' || selectedProvider === 'muse' || selectedProvider === 'dsh' ? effort : undefined,
+      model: selectedProvider === 'opencode' || selectedProvider === 'claude' || selectedProvider === 'grok' || selectedProvider === 'muse' || selectedProvider === 'dsh' || selectedProvider === 'gemini' || selectedProvider === 'openrouter' || selectedProvider === 'api' || selectedProvider === 'antigravity' ? model : undefined,
+      effort: selectedProvider === 'claude' || selectedProvider === 'grok' || selectedProvider === 'muse' || selectedProvider === 'dsh' || selectedProvider === 'gemini' || selectedProvider === 'openrouter' ? effort : undefined,
       deskId,
       name: kind === 'shell' ? `${name} 🐚` : name,
       color: kind === 'shell' ? '#8d99ae' : agent ? agent.color : COLORS[Math.floor(Math.random() * COLORS.length)],
@@ -1577,6 +1577,7 @@ export class WorkerManager {
     const isGrok = !isShell && provider === 'grok';
     const isMuse = !isShell && provider === 'muse';
     const isDsh = !isShell && provider === 'dsh';
+    const isCustomApi = !isShell && (provider === 'gemini' || provider === 'openrouter' || provider === 'api' || provider === 'antigravity');
     const configured = !isShell && provider === this.defaultProvider;
     const station = DESK_BY_ID.get(info.deskId)?.station;
     const command = this.command(info);
@@ -1595,7 +1596,7 @@ export class WorkerManager {
       if (resumeSessionId) args.push('--resume', resumeSessionId);
       // `--` so a prompt like "- fix login" is never parsed as a CLI option.
       if (prompt) args.push('--', prompt);
-    } else if (isOpenCode) {
+    } else if (isOpenCode || isCustomApi) {
       if (resumeSessionId || info.model) args = withoutOpenCodeModel(args);
       if (!resumeSessionId && info.model) args.push('--model', info.model);
       if (resumeSessionId) args.push('--session', resumeSessionId);
@@ -1633,7 +1634,7 @@ export class WorkerManager {
       w.codexPending.clear();
       w.codexPermissionUnknown = false;
     }
-    if (isOpenCode || isCodex || isGrok || isMuse) {
+    if (isOpenCode || isCodex || isGrok || isMuse || isCustomApi) {
       w.hookToken = randomBytes(16).toString('hex');
       w.openCodeError = false;
     }
@@ -2218,7 +2219,7 @@ process.stdin.on('end', () => {
         const tracker = restoreTracker(s.tracker);
         const provider = s.kind === 'shell'
           ? undefined
-          : s.provider === 'claude' || s.provider === 'opencode' || s.provider === 'codex' || s.provider === 'grok' || s.provider === 'muse' || s.provider === 'dsh' || s.provider === 'custom'
+          : s.provider === 'claude' || s.provider === 'opencode' || s.provider === 'codex' || s.provider === 'grok' || s.provider === 'muse' || s.provider === 'dsh' || s.provider === 'gemini' || s.provider === 'openrouter' || s.provider === 'api' || s.provider === 'antigravity' || s.provider === 'custom'
             ? s.provider
             : tracker.transcript
               ? 'claude'
@@ -2227,7 +2228,7 @@ process.stdin.on('end', () => {
           id: s.id,
           kind: s.kind === 'shell' ? 'shell' : 'agent',
           provider,
-          model: provider === 'opencode' && isValidOpenCodeModel(s.model) ? s.model : provider === 'claude' && isClaudeModel(s.model) ? s.model : provider === 'grok' && isValidGrokModel(s.model) ? s.model : provider === 'muse' && isValidMuseModel(s.model) ? s.model : provider === 'dsh' && isValidDshModel(s.model) ? s.model : undefined,
+          model: provider === 'opencode' && isValidOpenCodeModel(s.model) ? s.model : provider === 'claude' && isClaudeModel(s.model) ? s.model : provider === 'grok' && isValidGrokModel(s.model) ? s.model : provider === 'muse' && isValidMuseModel(s.model) ? s.model : provider === 'dsh' && isValidDshModel(s.model) ? s.model : (provider === 'gemini' || provider === 'openrouter' || provider === 'api' || provider === 'antigravity') && isValidCustomApiModel(s.model) ? s.model : undefined,
           effort: (provider === 'claude' || provider === 'grok' || provider === 'muse' || provider === 'dsh') && isAgentEffort(s.effort) ? s.effort : undefined,
           deskId: s.deskId,
           name: s.name ?? 'Worker',

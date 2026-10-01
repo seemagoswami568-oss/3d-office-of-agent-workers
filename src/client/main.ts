@@ -2050,7 +2050,7 @@ function syncWorkers() {
   arrangeSeats();
   // Whoever's waiting on someone lines up for the throne, the one who's waited longest first.
   court?.line(waitingInOrder(store.workers.values()).filter(inCourt).map((w) => w.id));
-  renderWorkers((id) => openWorkerTerminal(id));
+  renderWorkers((id) => openWorkerTerminal(id), hireNearestDesk);
   renderWaiting();
   notifier.sync(store.workers);
   renderTitle();
@@ -2326,6 +2326,16 @@ function hireAtDesk(deskId: string) {
     repoOptions: repoChoices(),
     onSubmit: (text, o) => hire(deskId, text || undefined, o.worktree, o.provider, o.model, o.effort, undefined, o.repos),
   });
+}
+
+/** Hires an agent at the free desk nearest to the player, or toasts if full. */
+function hireNearestDesk() {
+  const free = nearestFreeDesk();
+  if (free) {
+    hireAtDesk(free.id);
+  } else {
+    toast('Every desk on this floor is taken', 'warn');
+  }
 }
 
 function killWorker(id: string) {
@@ -3531,6 +3541,13 @@ function gongRang(why: GongWhy, pr?: number) {
 let target: Interactable | null = null;
 let hintKey = '';
 
+const touchDevice =
+  typeof window !== 'undefined' &&
+  (window.matchMedia('(pointer: coarse)').matches ||
+    'ontouchstart' in window ||
+    navigator.maxTouchPoints > 0 ||
+    /Android|iPhone|iPad|iPod/i.test(navigator.userAgent));
+
 function pickTarget(): Interactable | null {
   // Nearly everything you can use is upstairs; down on the street you're under it all, but for the
   // elevator's stop in the garage.
@@ -3576,6 +3593,14 @@ function key(k: string, label: string) {
       window.addEventListener('pointerup', release);
       window.addEventListener('pointercancel', release);
       window.addEventListener('blur', release);
+    });
+    button.addEventListener('click', (e) => {
+      e.preventDefault();
+      const it = target ?? pickTarget();
+      const deskKey = k as DeskKey;
+      if (it && deskKey in DESK_KEYS) {
+        use(it, deskKey);
+      }
     });
     return button;
   }
@@ -4032,14 +4057,181 @@ function emote(id: EmoteId) {
 const emoteWheel = new EmoteWheel(emote, (open) => (player.mouseLook = !open));
 $('hud').append(emoteWheel.el);
 
-const touchDevice = window.matchMedia('(pointer: coarse)').matches;
+let updateTouchActionBtn: (() => void) | null = null;
+
+function getTouchActionInfo(): { label: string; icon: string; primary: boolean; run(): void } {
+  if (telescope.active) return { icon: '🔭', label: 'Exit telescope', primary: false, run: () => telescope.exit() };
+  if (climber.active) return { icon: '🪜', label: 'Let go', primary: false, run: () => climber.letGo() };
+  if (golf.active) return { icon: '⛳', label: 'Put club back', primary: false, run: () => golf.stop() };
+  if (thrower.active) return { icon: '🎯', label: 'Step back', primary: false, run: () => thrower.stop() };
+  if (driver.active) return { icon: '🏎️', label: 'Get out', primary: false, run: () => getOut() };
+  if (holdingBall()) return { icon: '🏀', label: 'Shoot ball', primary: true, run: () => letFly() };
+
+  const currentTarget = target ?? pickTarget();
+  if (currentTarget) {
+    if (currentTarget.kind === 'desk' && currentTarget.deskId) {
+      const w = store.workerAtDesk(currentTarget.deskId);
+      if (w) {
+        if (isAsleep(w.status)) return { icon: '⚡', label: 'Resume', primary: true, run: () => resumeWorker(w) };
+        return { icon: '💻', label: 'Terminal', primary: true, run: () => openWorkerTerminal(w.id) };
+      }
+      if (plan().byId.get(currentTarget.deskId)?.room) {
+        return { icon: '🤝', label: 'Meeting', primary: true, run: () => showMeeting() };
+      }
+      return { icon: '✨', label: 'Assign Agent', primary: true, run: () => hireAtDesk(currentTarget.deskId!) };
+    }
+    if (currentTarget.kind === 'station' && currentTarget.deskId) {
+      return { icon: '🤖', label: 'Ask Station', primary: true, run: () => askStation(currentTarget.deskId!) };
+    }
+    if (currentTarget.kind === 'elevator') {
+      return { icon: '🛗', label: 'Elevator', primary: true, run: () => showElevator() };
+    }
+    if (currentTarget.kind === 'coffee') {
+      return { icon: '☕', label: 'Coffee', primary: false, run: () => drinkCoffee() };
+    }
+    if (currentTarget.kind === 'seat' && currentTarget.seatId) {
+      const sitting = player.seat?.seatId === currentTarget.seatId;
+      return { icon: '🪑', label: sitting ? 'Get up' : 'Sit down', primary: false, run: () => useSeat(currentTarget.seatId!) };
+    }
+    if (currentTarget.kind === 'issues') {
+      return { icon: '📌', label: 'Issues', primary: true, run: () => openBoard('issues', net, boardActions()) };
+    }
+    if (currentTarget.kind === 'pulls') {
+      return { icon: '🔀', label: 'PRs', primary: true, run: () => openBoard('pulls', net, boardActions()) };
+    }
+    if (currentTarget.kind === 'services') {
+      return { icon: '🌐', label: 'Services', primary: true, run: () => openServices() };
+    }
+    if (currentTarget.kind === 'queue') {
+      return { icon: '📋', label: 'Queue', primary: true, run: () => showQueue() };
+    }
+    if (currentTarget.kind === 'meeting') {
+      return { icon: '🤝', label: 'Meeting', primary: true, run: () => showMeeting() };
+    }
+    if (currentTarget.kind === 'tv') {
+      return { icon: '📺', label: 'TV', primary: false, run: () => watchShare() };
+    }
+    if (currentTarget.kind === 'bookshelf') {
+      return { icon: '📚', label: 'Docs', primary: false, run: () => showBookshelf() };
+    }
+    if (currentTarget.kind === 'jukebox') {
+      return { icon: '🎵', label: 'Jukebox', primary: false, run: () => showJukebox() };
+    }
+    if (currentTarget.kind === 'dog') {
+      return { icon: '🐶', label: 'Pet dog', primary: false, run: () => net.send({ t: 'dog.pet' }) };
+    }
+    return { icon: '⚡', label: 'Interact', primary: true, run: () => use(currentTarget, 'E') };
+  }
+
+  return {
+    icon: '✨',
+    label: 'Assign Agent',
+    primary: true,
+    run: () => {
+      const free = nearestFreeDesk();
+      if (free) hireAtDesk(free.id);
+      else toast('Every desk on this floor is taken', 'warn');
+    },
+  };
+}
+
 function touchPadControls() {
   if (!touchDevice) return null;
   const control = h('div.touch-controls', {});
 
   const move = h('div.touch-stick', { 'aria-label': 'Move controls' }, h('div.thumb', {}));
   const look = h('div.touch-look', { 'aria-label': 'Look controls' }, h('div.thumb', {}));
-  control.append(move, look);
+
+  const actions = h('div.touch-actions', {});
+
+  const actionBtn = h('button.touch-btn.touch-btn-action', { type: 'button', 'aria-label': 'Action / Assign' });
+  const actionIcon = h('span.touch-btn-icon', {}, '✨');
+  const actionLabel = h('span.touch-btn-text', {}, 'Assign Agent');
+  actionBtn.append(actionIcon, actionLabel);
+
+  const subActions = h('div.touch-sub-actions', {});
+
+  const menuBtn = h('button.touch-btn.touch-btn-menu', { type: 'button', 'aria-label': 'Menu (Tab)' },
+    h('span.touch-btn-icon', {}, '☰'),
+    h('span.touch-btn-text', {}, 'Menu'),
+  );
+
+  const promptBtn = h('button.touch-btn.touch-btn-prompt', { type: 'button', 'aria-label': 'Prompt (P)' },
+    h('span.touch-btn-icon', {}, '💬'),
+    h('span.touch-btn-text', {}, 'Prompt'),
+  );
+
+  const jumpBtn = h('button.touch-btn.touch-btn-jump', { type: 'button', 'aria-label': 'Jump' },
+    h('span.touch-btn-icon', {}, '⬆'),
+    h('span.touch-btn-text', {}, 'Jump'),
+  );
+
+  const resetBtn = h('button.touch-btn.touch-btn-reset', { type: 'button', 'aria-label': 'Reset camera view' },
+    h('span.touch-btn-icon', {}, '◎'),
+    h('span.touch-btn-text', {}, 'Reset view'),
+  );
+
+  subActions.append(menuBtn, promptBtn, jumpBtn, resetBtn);
+  actions.append(actionBtn, subActions);
+  control.append(move, look, actions);
+
+  actionBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    getTouchActionInfo().run();
+  });
+
+  menuBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    hud.toggleMenu();
+  });
+
+  promptBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const currentTarget = target ?? pickTarget();
+    if (currentTarget?.kind === 'desk' && currentTarget.deskId) {
+      promptAtDesk(currentTarget.deskId);
+    } else {
+      const free = nearestFreeDesk();
+      if (free) promptAtDesk(free.id);
+      else toast('Every desk on this floor is taken', 'warn');
+    }
+  });
+
+  resetBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    player.resetLook();
+  });
+
+  const sendKey = (code: string, key: string, type: 'keydown' | 'keyup') =>
+    window.dispatchEvent(new KeyboardEvent(type, { code, key, bubbles: true, cancelable: true }));
+
+  jumpBtn.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    jumpBtn.setPointerCapture(e.pointerId);
+    sendKey('Space', ' ', 'keydown');
+  });
+  const releaseJump = (e: PointerEvent) => {
+    e.preventDefault();
+    sendKey('Space', ' ', 'keyup');
+  };
+  jumpBtn.addEventListener('pointerup', releaseJump);
+  jumpBtn.addEventListener('pointercancel', releaseJump);
+
+  let lastActionLabel = '';
+  updateTouchActionBtn = () => {
+    const info = getTouchActionInfo();
+    if (info.label !== lastActionLabel) {
+      lastActionLabel = info.label;
+      actionIcon.textContent = info.icon;
+      actionLabel.textContent = info.label;
+      actionBtn.classList.toggle('primary', info.primary);
+    }
+  };
 
   const bindPad = (pad: HTMLElement, thumb: HTMLElement, onUpdate: (dx: number, dy: number) => void, onClear: () => void) => {
     let lastX = 0;
@@ -4552,6 +4744,7 @@ const waitingNow = () => waitingInOrder(store.workers.values());
 const noMedia = () => (window.isSecureContext ? undefined : 'Voice and screen sharing need HTTPS or localhost — use a TLS proxy, --self-signed, or an SSH tunnel');
 const hud = mountHud(
   [
+    { id: 'hire', icon: '✨', label: 'Assign worker', section: 'Open', title: () => 'Hire an agent worker at an empty desk', run: hireNearestDesk },
     { id: 'issues', icon: '📌', label: 'Issues', section: 'Open', count: () => store.issues.items.filter((i) => i.state === 'OPEN').length, run: () => openBoard('issues', net, boardActions()) },
     { id: 'pulls', icon: '🔀', label: 'Pull requests', section: 'Open', count: () => store.pulls.items.filter((p) => p.state === 'OPEN').length, run: () => openBoard('pulls', net, boardActions()) },
     { id: 'queue', icon: '📋', label: 'Task queue', section: 'Open', count: () => store.queue.tasks.filter((t) => t.status !== 'done').length, title: () => 'Issues and tasks waiting for a worker', run: showQueue },
@@ -4925,7 +5118,7 @@ function frame(ts?: number) {
   if (modalOpen() || telescope.active || hanger.active || climber.active || golf.active || thrower.active || driver.active) target = null;
   else if (firstPerson) {
     const aim = aimedAt(CROSSHAIR);
-    target = aim?.near ? aim.it : (throneTarget() ?? mySeat() ?? (inOffice() ? ballAtFeet() : null));
+    target = aim?.near ? aim.it : (throneTarget() ?? mySeat() ?? (touchDevice ? pickTarget() : null) ?? (inOffice() ? ballAtFeet() : null));
     if (aim?.near) aimedNote = noteUnder(aim);
   } else {
     target = throneTarget() ?? mySeat() ?? pickTarget();
@@ -4938,6 +5131,7 @@ function frame(ts?: number) {
   issuesTex.lift(aimedNote?.number ?? null);
   renderHint();
   renderCrosshair();
+  if (updateTouchActionBtn) updateTouchActionBtn();
 
   if (now - speakTick > 200) {
     speakTick = now;
@@ -4995,19 +5189,24 @@ function boot() {
   requestAnimationFrame(frame);
 }
 
-/** Who you're signed in as. With an account of your own, your name is that account's. */
-async function whoami() {
+async function whoami(): Promise<boolean> {
   try {
     const res = await fetch('/api/whoami', { cache: 'no-store' });
-    if (res.status === 401) location.href = '/login';
+    if (res.status === 401) {
+      location.href = '/login';
+      return false;
+    }
     const { me } = (await res.json()) as { me?: typeof store.me };
     if (me) store.me = me;
+    return true;
   } catch {
     // the welcome message says it too
+    return true;
   }
 }
 
-void whoami().then(() => {
+void whoami().then((ok) => {
+  if (ok === false) return;
   const saved = loadProfile();
   if (saved && store.me.account) saved.name = store.me.account.name;
   if (store.me.account) store.profile.name = store.me.account.name;

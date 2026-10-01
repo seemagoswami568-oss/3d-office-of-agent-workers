@@ -91,7 +91,8 @@ export function toggleFloorMenu(anchor: HTMLElement, opts: FloorMenuOptions): vo
 
   const place = () => {
     const r = anchor.getBoundingClientRect();
-    el.style.left = `${r.left}px`;
+    const maxLeft = Math.max(12, window.innerWidth - el.offsetWidth - 12);
+    el.style.left = `${Math.min(Math.max(12, r.left), maxLeft)}px`;
     el.style.top = `${r.bottom + 8}px`;
   };
 

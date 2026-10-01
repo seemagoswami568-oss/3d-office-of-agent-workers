@@ -2,7 +2,7 @@
 
 Back to the [README](../README.md).
 
-On a phone, drag the fixed left stick to walk and the right pad to look around. When an interaction is in reach, its hint becomes a **Tap** button. The keyboard controls below continue to work on computers.
+On a phone, drag the fixed left stick to walk and the right pad to look around. The large context button performs the nearby action (or the current activity's exit action); the smaller buttons open the menu, prompt a worker, jump, and reset the camera. When an interaction is in reach, its hint becomes a **Tap** button. The keyboard controls below continue to work on computers.
 
 | Key | Action |
 | --- | --- |

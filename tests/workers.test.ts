@@ -136,6 +136,8 @@ function fixture(): Fixture {
   const log = path.join(root, 'invocations.jsonl');
   const claude = path.join(bin, 'claude');
   const opencode = path.join(bin, 'opencode');
+  const api = path.join(bin, 'api');
+  const antigravity = path.join(bin, 'antigravity');
   const custom = path.join(bin, 'custom-agent');
   const codex = path.join(bin, 'codex');
   const grok = path.join(bin, 'grok');
@@ -144,12 +146,16 @@ function fixture(): Fixture {
   mkdirSync(bin, { recursive: true });
   writeFileSync(claude, fakeAgent, { mode: 0o700 });
   writeFileSync(opencode, fakeAgent, { mode: 0o700 });
+  writeFileSync(api, fakeAgent, { mode: 0o700 });
+  writeFileSync(antigravity, fakeAgent, { mode: 0o700 });
   writeFileSync(custom, fakeAgent, { mode: 0o700 });
   writeFileSync(codex, fakeAgent, { mode: 0o700 });
   writeFileSync(grok, fakeAgent, { mode: 0o700 });
   writeFileSync(muse, fakeAgent, { mode: 0o700 });
   chmodSync(claude, 0o700);
   chmodSync(opencode, 0o700);
+  chmodSync(api, 0o700);
+  chmodSync(antigravity, 0o700);
   chmodSync(custom, 0o700);
   chmodSync(grok, 0o700);
   chmodSync(muse, 0o700);
@@ -160,6 +166,8 @@ function fixture(): Fixture {
     log,
     claude,
     opencode,
+    api,
+    antigravity,
     codex,
     grok,
     muse,
@@ -438,6 +446,40 @@ test('workers reject models for providers that cannot select one and malformed m
   assert.match(workers.spawn('desk-4', 'test', 'bad', false, 'agent', 'grok', 'openai/gpt-5') as string, /model/i);
   assert.match(workers.spawn('desk-5', 'test', 'bad', false, 'agent', 'muse', 'openai/gpt-5') as string, /model/i);
   assert.match(workers.spawn('desk-6', 'test', 'bad', false, 'shell', undefined, 'openai/gpt-5') as string, /shell|model/i);
+});
+
+test('API and Antigravity model choices launch and survive a worker restart', async (t) => {
+  const oldLog = process.env.FAKE_AGENT_LOG;
+  t.after(() => {
+    if (oldLog === undefined) delete process.env.FAKE_AGENT_LOG;
+    else process.env.FAKE_AGENT_LOG = oldLog;
+  });
+  for (const provider of ['api', 'antigravity'] as const) {
+    const f = fixture();
+    t.after(() => f.close());
+    const command = provider === 'api' ? f.api : f.antigravity;
+    const updates: WorkerInfo[] = [];
+    process.env.FAKE_AGENT_LOG = f.log;
+    const workers = manager(f, command, updates);
+    t.after(() => workers.shutdown());
+    const worker = workers.spawn('desk-1', 'test', `${provider} task`, false, 'agent', provider, `${provider}/test-model`);
+    assert.equal(typeof worker, 'object');
+    if (typeof worker === 'string') continue;
+    const launch = await waitFor(() => f.read(), (records) => records.some((record) => record.kind === provider));
+    const invocation = launch.find((record) => record.kind === provider)!;
+    assert.ok(invocation.args.includes('--model'));
+    assert.ok(invocation.args.includes(`${provider}/test-model`));
+    assert.equal(worker.provider, provider);
+    assert.equal(worker.model, `${provider}/test-model`);
+
+    workers.shutdown();
+    const restored = manager(f, command, []);
+    await restored.start();
+    assert.equal(restored.get(worker.id)?.provider, provider);
+    assert.equal(restored.get(worker.id)?.model, `${provider}/test-model`);
+    restored.shutdown();
+    t.after(() => restored.shutdown());
+  }
 });
 
 test('workers reject reasoning effort for providers without one and unknown levels', (t) => {

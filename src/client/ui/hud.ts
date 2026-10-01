@@ -57,9 +57,17 @@ export function updateSpeaking(voice: Voice) {
   }
 }
 
-export function renderWorkers(onOpen: (id: string) => void) {
+export function renderWorkers(onOpen: (id: string) => void, onHire?: () => void) {
   const ul = $('workers');
   ul.replaceChildren();
+  if (onHire) {
+    const hireRow = h(
+      'li.workers-hire-row',
+      { style: 'padding:2px 0 4px;' },
+      h('button.btn.primary.workers-assign-btn', { type: 'button', style: 'width:100%;justify-content:center;font-size:13px;padding:6px 10px;', onclick: () => onHire() }, '✨ Assign Agent'),
+    );
+    ul.append(hireRow);
+  }
   const workers = [...store.workers.values()].sort((a, b) => a.createdAt - b.createdAt);
   for (const w of workers) {
     const provider = w.kind === 'agent' ? providerLabel(w.provider, store.project) : null;
@@ -80,7 +88,16 @@ export function renderWorkers(onOpen: (id: string) => void) {
       ),
     );
   }
-  if (!workers.length) ul.append(h('li.empty', {}, 'Walk up to a desk and press E to hire one'));
+  if (!workers.length) {
+    ul.append(
+      h(
+        'li.empty',
+        { style: 'display:flex;flex-direction:column;gap:6px;' },
+        h('span', {}, 'No workers on this floor yet.'),
+        !onHire ? h('span', {}, 'Walk up to a desk and press E to hire one') : null,
+      ),
+    );
+  }
   // The count is the workers hired onto desks and bean bags (and a meeting's table): the board agents
   // standing at the Issues, PR and queue kiosks are listed but aren't counted.
   const hired = workers.filter((w) => !DESK_BY_ID.get(w.deskId)?.station).length;

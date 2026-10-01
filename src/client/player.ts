@@ -306,6 +306,14 @@ export class PlayerController {
     this.look(dx, dy);
   }
 
+  /** Re-centers the camera when the touch view is awkward on mobile. */
+  resetLook() {
+    this.camYaw = this.facing - Math.PI;
+    if (this.view === 'first') this.lookPitch = -0.08;
+    else this.camPitch = 0.42;
+    this.updateCamera();
+  }
+
   /**
    * Captures the mouse for looking around, as the first click on the scene does. With `settle` (a
    * click just closed a window), the view holds still until the mouse comes to rest, so the rest of

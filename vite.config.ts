@@ -34,10 +34,27 @@ function excalidrawFonts(): Plugin {
   };
 }
 
+function htmlRoutes(): Plugin {
+  return {
+    name: 'html-routes',
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const rawUrl = req.url ?? '/';
+        const [pathname, search] = rawUrl.split('?');
+        const cleanPath = pathname.replace(/\/$/, '');
+        if (cleanPath === '/login' || cleanPath === '/lite' || cleanPath === '/claim' || cleanPath === '/join') {
+          req.url = `${cleanPath}.html${search ? `?${search}` : ''}`;
+        }
+        next();
+      });
+    },
+  };
+}
+
 export default defineConfig({
   root: resolve(import.meta.dirname, 'src/client'),
   publicDir: resolve(import.meta.dirname, 'src/client/public'),
-  plugins: [excalidrawFonts()],
+  plugins: [excalidrawFonts(), htmlRoutes()],
   define: {
     __EXCALIDRAW_ASSETS__: JSON.stringify(EXCALIDRAW_ASSETS),
   },

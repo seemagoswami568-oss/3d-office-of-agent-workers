@@ -84,7 +84,7 @@ Common options:
 agent-office ~/code/my-project              # use a project you already have as the first floor
 agent-office --password 'correct horse'     # choose the password
 agent-office --port 4700
-agent-office --agent grok                   # default agent: claude, codex, opencode, grok, muse or dsh
+agent-office --agent grok                   # default agent: claude, codex, opencode, grok, muse, dsh, gemini, openrouter, api or antigravity
 agent-office --no-open                      # print the sign-in link instead of opening a browser
 agent-office setup                          # the first-start walkthrough again (office stopped)
 ```

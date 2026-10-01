@@ -22,7 +22,7 @@ test('detects the configured provider from Unix and Windows command paths', () =
 
 test('dsh is a provider the wire accepts, and the others still are', () => {
   assert.equal(isAgentProvider('dsh'), true);
-  for (const provider of ['claude', 'opencode', 'codex', 'custom']) assert.equal(isAgentProvider(provider), true);
+  for (const provider of ['claude', 'opencode', 'codex', 'custom', 'api', 'antigravity']) assert.equal(isAgentProvider(provider), true);
   assert.equal(isAgentProvider('deepseek'), false);
   assert.equal(isAgentProvider(undefined), false);
 });
